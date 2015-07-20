@@ -12,12 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dynamodb.connectionManager     import ConnectionManager
-from dynamodb.gameController        import GameController
-from models.game                    import Game
-from uuid                           import uuid4
-from flask                          import Flask, render_template, request, session, flash, redirect, jsonify, json
-from ConfigParser                   import ConfigParser
+from dynamodb.connectionManager       import ConnectionManager
+from dynamodb.deviceController        import DeviceController
+from models.device                    import Device
+from uuid                             import uuid4
+from flask                            import Flask, render_template, request, session, flash, redirect, jsonify, json
+from ConfigParser                     import ConfigParser
 import os, time, sys, argparse
 
 application = Flask(__name__)
@@ -59,7 +59,7 @@ if 'USE_EC2_INSTANCE_METADATA' in os.environ:
     use_instance_metadata = os.environ['USE_EC2_INSTANCE_METADATA']
 
 cm = ConnectionManager(mode=args.mode, config=config, endpoint=args.endpoint, port=args.port, use_instance_metadata=use_instance_metadata)
-controller = GameController(cm)
+controller = DeviceController(cm)
 
 serverPort = args.serverPort
 if config is not None:
@@ -80,15 +80,7 @@ if serverPort is None:
    Define the urls and actions the app responds to   
 """
 
-@application.route('/logout')
-def logout():
-    """ 
-    Method associated to the route '/logout' that sets the logged in
-    user of the session to None.
-    """
-    session["username"] = None
-    return redirect("/index")
-
+"""
 @application.route('/table', methods=["GET", "POST"])
 def createTable():
     cm.createGamesTable() 
@@ -97,7 +89,9 @@ def createTable():
         time.sleep(3)
 
     return redirect('/index')
-
+    """
+cm.createDevicesTable()
+controller.createNewDevice("CardioCare", "Medikraft", "Infant Incubator")
 @application.route('/')
 @application.route('/index', methods=["GET", "POST"])
 def index():
@@ -108,231 +102,27 @@ def index():
     games finished by the logged in user (if there is one).
     """
 
-    if session == {} or session.get("username", None) == None:
-        form = request.form
-        if form:
-            formInput = form["username"]
-            if formInput and formInput.strip():
-                session["username"] = request.form["username"]
-            else:
-                session["username"] = None
-        else:
-            session["username"] = None
-    
     if request.method == "POST":
         return redirect('/index')
 
-    inviteGames = controller.getGameInvites(session["username"])
-    if inviteGames == None:
-        flash("Table has not been created yet, please follow this link to create table.")
-        return render_template("table.html",
-                                user="")
-    # Don't attempt to iterate over inviteGames until AFTER None test
-    inviteGames = [Game(inviteGame) for inviteGame in inviteGames]
+    matchingDevices = controller.getDevicesWithQuery("CardioCare")
+    print Device(matchingDevices[0])
+    results = [Device(device) for device in matchingDevices]
 
-    inProgressGames = controller.getGamesWithStatus(session["username"], "IN_PROGRESS")
-    inProgressGames = [Game(inProgressGame) for inProgressGame in inProgressGames]
+    return render_template("index.html", results=results)
 
-    finishedGames   = controller.getGamesWithStatus(session["username"], "FINISHED") 
-    fs = [Game(finishedGame) for finishedGame in finishedGames]
-
-    return render_template("index.html", 
-            user=session["username"],
-            invites=inviteGames,
-            inprogress=inProgressGames,
-            finished=fs) 
-
+"""
 @application.route('/create')
 def create():
-    """
-    The route associated with the create button on the index page.
-    Checks for a logged in user before proceeding to create a game.
-    """
+"""
+
+"""
     if session.get("username", None) == None:
         flash("Need to login to create game")
         return redirect("/index")
     return render_template("create.html",
                             user=session["username"])
-
-@application.route('/play', methods=["POST"])
-def play():
-    """
-    This method receives the post request from the form on the 
-    '/create' page. 
-
-    Basic validation for the name of the player invited.
-
-    Calls the createNewGame method from the gameController and either
-    informs you that the creation failed or takes you to the game's page.
-    """
-    form = request.form
-    if form:
-        creator = session["username"]
-        gameId  = str(uuid4())
-        invitee = form["invitee"].strip()
-
-        if not invitee or creator == invitee:
-            flash("Use valid a name (not empty or your name)")
-            return redirect("/create")
-
-        if controller.createNewGame(gameId, creator, invitee):
-            return redirect("/game="+gameId)
-
-    flash("Something went wrong creating the game.")
-    return redirect("/create")
-
-@application.route('/game=<gameId>')
-def game(gameId):
-    """
-    Method associated the with the '/game=<gameId>' route where the
-    gameId is in the URL.  
-    
-    Validates that the gameId actually exists.
-
-    Checks to see if the game has been finished.
-    
-    Gets the state of the board and updates the visual representation
-    accordingly.
-    
-    Displays a bit of extra information like turn, status, and gameId.
-    """
-    if session.get("username", None) == None:
-        flash("Need to login")
-        return redirect("/index")
-    
-    item = controller.getGame(gameId)
-    if item == None: 
-        flash("That game does not exist.")
-        return redirect("/index")
-
-
-    boardState = controller.getBoardState(item)
-    result = controller.checkForGameResult(boardState, item, session["username"])
-
-    if result != None:
-        if controller.changeGameToFinishedState(item, result, session["username"]) == False:
-            flash("Some error occured while trying to finish game.")
-
-    game = Game(item)
-    status   = game.status
-    turn     = game.turn 
-
-    if game.getResult(session["username"]) == None:
-        if (turn == game.o):
-            turn += " (O)"
-        else:
-            turn += " (X)"
-
-    gameData = {'gameId': gameId, 'status': game.status, 'turn': game.turn, 'board': boardState};
-    gameJson = json.dumps(gameData)
-    return render_template("play.html",
-                            gameId=gameId,
-                            gameJson=gameJson,
-                            user=session["username"],
-                            status=status,
-                            turn=turn,
-                            opponent=game.getOpposingPlayer(session["username"]),
-                            result=result,
-                            TopLeft=boardState[0],
-                            TopMiddle=boardState[1],
-                            TopRight=boardState[2],
-                            MiddleLeft=boardState[3],
-                            MiddleMiddle=boardState[4],
-                            MiddleRight=boardState[5],
-                            BottomLeft=boardState[6],
-                            BottomMiddle=boardState[7],
-                            BottomRight=boardState[8])
-
-@application.route('/gameData=<gameId>')
-def gameData(gameId):
-    """
-    Method associated the with the '/gameData=<gameId>' route where the
-    gameId is in the URL.  
-    
-    Validates that the gameId actually exists.
-
-    Returns a JSON representation of the game to support AJAX to poll to see
-    if the page should be refreshed
-    """
-    item = controller.getGame(gameId)
-    boardState = controller.getBoardState(item)
-    if item == None:
-        return jsonify(error='That game does not exist')
-
-    game = Game(item)
-    return jsonify(gameId = gameId,
-                   status = game.status,
-                   turn = game.turn,
-                   board = boardState)
-
-@application.route('/accept=<invite>', methods=["POST"])
-def accept(invite):
-    """
-    Method associated with the route '/accept=<invite>' where invite
-    is the game that you have chosen to accept.
-
-    Updates the game status to IN_PROGRESS and proceeds to the game's page.
-    """
-    gameId = request.form["response"]
-    game = controller.getGame(gameId) 
-    
-    if game == None:
-        flash("That game does not exist anymore.")
-        redirect("/index")
-
-    if not controller.acceptGameInvite(game):
-        flash("Error validating the game...")
-        redirect("/index")
-
-    return redirect("/game="+game["GameId"])
-
-@application.route('/reject=<invite>', methods=["POST"])
-def reject(invite):
-    """
-    Method associated with the route '/reject=<invite>' where invite
-    is the game that you have chosen to reject.
-
-    Deletes the item associated with the invite from the Games table.
-    """
-    gameId = request.form["response"]
-    game = controller.getGame(gameId)
-    
-    if game == None:
-        flash("That game doesn't exist anymore.")
-        redirect("/index")
-
-    if not controller.rejectGameInvite(game):
-        flash("Something went wrong when deleting invite.")
-        redirect("/index")
-
-    return redirect("/index") 
-
-@application.route('/select=<gameId>', methods=["POST"])
-def selectSquare(gameId):
-    """
-    Method associated with the route '/select=<gameId>' where gameId
-    is the game you tried to make a move on.
-
-    Tries to perform a conditional write on the item associated with this
-    gameId. If it fails then user receives a message describing the
-    potential errors that he made.
-    """
-    value = request.form["cell"]
-
-    item = controller.getGame(gameId)
-    if item == None:
-        flash("This is not a valid game.")
-        return redirect("/index")
-
-    if controller.updateBoardAndTurn(item, value, session["username"]) == False:
-        flash("You have selected a square either when \
-                it's not your turn, \
-                the square is already selected, \
-                or the game is not 'In-Progress'.",
-                "updateError")
-        return redirect("/game="+gameId)
-
-    return redirect("/game="+gameId)
+"""
 
 if __name__ == "__main__":
     if cm:

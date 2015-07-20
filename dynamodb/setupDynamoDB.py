@@ -26,9 +26,14 @@ def getDynamoDBConnection(config=None, endpoint=None, port=None, local=False, us
         db = DynamoDBConnection(
             host=endpoint,
             port=port,
-            aws_secret_access_key='ticTacToeSampleApp', 
-            aws_access_key_id='ticTacToeSampleApp',   
+            aws_secret_access_key='AKIAIZ2NKAVOD4UIJNVQ', 
+            aws_access_key_id='7W5NMo91HGR7cuojCx0kPizKtk65btiB6co315qt',   
             is_secure=False)
+
+        print "==============="
+        print db.list_tables()
+        print "==============="
+
     else:
         params = {
             'is_secure': True
@@ -62,41 +67,23 @@ def getDynamoDBConnection(config=None, endpoint=None, port=None, local=False, us
         db = DynamoDBConnection(**params)
     return db
 
-def createGamesTable(db):
-
+def createDevicesTable(db):
     try:
-        hostStatusDate = GlobalAllIndex("HostId-StatusDate-index",
-                                        parts=[HashKey("HostId"), RangeKey("StatusDate")],
-                                        throughput={
-                                            'read': 1,
-                                            'write': 1
-                                        })
-        opponentStatusDate  = GlobalAllIndex("OpponentId-StatusDate-index",
-                                        parts=[HashKey("OpponentId"), RangeKey("StatusDate")],
-                                        throughput={
-                                            'read': 1,
-                                            'write': 1
-                                        })
-
-        #global secondary indexes
-        GSI = [hostStatusDate, opponentStatusDate]
-
-        gamesTable = Table.create("Games",
-                    schema=[HashKey("GameId")],
+        devicesTable = Table.create("Devices",
+                    schema=[HashKey("ManualName")],
                     throughput={
                         'read': 1,
                         'write': 1
                     },
-                    global_indexes=GSI,
                     connection=db)
 
     except JSONResponseError, jre:
         try:
-            gamesTable = Table("Games", connection=db)
+            devicesTable = Table("Devices", connection=db)
         except Exception, e:
-            print "Games Table doesn't exist."
+            print "Devices Table doesn't exist."
     finally:
-        return gamesTable 
+        return devicesTable 
 
 #parse command line args for credentials and such
 #for now just assume local is when args are empty

@@ -19,7 +19,7 @@ from boto.dynamodb2.items   import Item
 from boto.dynamodb2.table   import Table
 from datetime               import datetime
 
-class DevicesController:
+class DeviceController:
     """
     This GameController class basically acts as a singleton providing the necessary 
     DynamoDB API calls.
@@ -27,32 +27,20 @@ class DevicesController:
     def __init__(self, connectionManager):
         self.cm = connectionManager
         self.ResourceNotFound = 'com.amazonaws.dynamodb.v20120810#ResourceNotFoundException'
-   
-   """ 
-    def createNewGame(self, gameId, creator, invitee):
-        """
-        """
-        Using the High-Level API, an Item is created and saved to the table.
-        All the primary keys for either the schema or an index (GameId,
-        HostId, StatusDate, and OpponentId) as well as extra attributes needed to maintain
-        game state are given a value.
-        Returns True/False depending on the success of the save.
-        """
-        """ 
-        now = str(datetime.now())
-        statusDate = "PENDING_" + now
-        item = Item(self.cm.getGamesTable(), data= {
-                            "GameId"     : gameId,
-                            "HostId"     : creator,
-                            "StatusDate" : statusDate,
-                            "OUser"      : creator,
-                            "Turn"       : invitee,
-                            "OpponentId" : invitee
-                        })
-        
-        return item.save()
-    """
-    
+
+        self.count = 0
+
+    def createNewDevice(self, manualName, manufacturer, equipment):
+        print "in createNewDevice"
+        # if self.count == 0:
+        #     print "in createNewDevice"
+
+        #     item = Item(self.cm.getDevicesTable(), data={
+        #             "ManualName": manualName})
+
+        #     item.save()
+        #     self.count += 1
+
     def checkIfTableIsActive(self):
         description = self.cm.db.describe_table("Devices")
         status = description['Table']['TableStatus']
@@ -67,11 +55,19 @@ class DevicesController:
         Return a list of Game objects.
         """
     
-        results = self.cm.getDevicesTable().query_2(               Equipment__beginswith=query)
+        print query
+
+        # results = self.cm.getDevicesTable().query_2(               ManualName__beginswith=query)
+
+        results = self.cm.getDevicesTable().scan(
+            ManualName__beginswith=query)
    
         resultList = []
 
-        for result in results:
-            resultList.append(result)
+        try:
+            r = results.next()
+            resultList.append(r)
+        except StopIteration, si:
+            print "No results"
 
         return resultList
